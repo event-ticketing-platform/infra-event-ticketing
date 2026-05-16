@@ -1,8 +1,6 @@
 services:
   api-gateway:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-api-gateway:${IMAGE_TAG:-latest}
-    build:
-      context: ../api-gateway
     container_name: api-gateway
     ports:
       - "${API_GATEWAY_HOST_PORT:-18080}:8080"
@@ -34,8 +32,6 @@ services:
 
   booking-service:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-booking-service:${IMAGE_TAG:-latest}
-    build:
-      context: ../booking-service
     container_name: booking-service
     ports:
       - "${BOOKING_SERVICE_HOST_PORT:-18081}:8081"
@@ -55,8 +51,6 @@ services:
 
   payment-service:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-payment-service:${IMAGE_TAG:-latest}
-    build:
-      context: ../payment-service
     container_name: payment-service
     ports:
       - "${PAYMENT_SERVICE_HOST_PORT:-18082}:8082"
@@ -103,8 +97,6 @@ services:
 
   frontend:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-frontend:${IMAGE_TAG:-latest}
-    build:
-      context: ../frontend
     container_name: event-ticketing-frontend
     ports:
       - "${FRONTEND_HOST_PORT:-8088}:80"

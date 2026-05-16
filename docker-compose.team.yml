@@ -1,0 +1,202 @@
+services:
+  api-gateway:
+    environment:
+      EVENT_SERVICE_URL: http://event-service:8083
+      VENUE_SERVICE_URL: http://venue-service:8084
+      USER_SERVICE_URL: http://user-service:8090
+      TICKETING_SERVICE_URL: http://ticketing-service:8086
+      CHECKIN_SERVICE_URL: http://checkin-service:8087
+      REPORTING_SERVICE_URL: http://reporting-service:8089
+    depends_on:
+      - auth-db
+      - booking-service
+      - payment-service
+      - event-service
+      - venue-service
+      - user-service
+      - ticketing-service
+      - checkin-service
+      - reporting-service
+
+  event-service:
+    image: deb0tush/event-service:${TEAM_IMAGE_TAG:-latest}
+    platform: linux/amd64
+    container_name: event-service
+    ports:
+      - "${EVENT_SERVICE_HOST_PORT:-18083}:8083"
+    environment:
+      SERVER_PORT: 8083
+
+  venue-service:
+    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-venue-service:${TEAM_IMAGE_TAG:-latest}
+    container_name: venue-service
+    ports:
+      - "${VENUE_SERVICE_HOST_PORT:-18084}:8084"
+    environment:
+      SERVER_PORT: 8084
+      SPRING_DATASOURCE_URL: jdbc:postgresql://venue-db:5432/venue_db
+      SPRING_DATASOURCE_USERNAME: venue_user
+      SPRING_DATASOURCE_PASSWORD: venue_pass
+      JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
+      JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
+    depends_on:
+      - venue-db
+
+  user-service:
+    image: deb0tush/user-service:${TEAM_IMAGE_TAG:-latest}
+    platform: linux/amd64
+    container_name: user-service
+    ports:
+      - "${USER_SERVICE_HOST_PORT:-18085}:8090"
+    environment:
+      SERVER_PORT: 8090
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_service_db
+      SPRING_DATASOURCE_USERNAME: user_user
+      SPRING_DATASOURCE_PASSWORD: user_pass
+      JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+    depends_on:
+      - user-db
+
+  ticketing-service:
+    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-ticketing-service:${TEAM_IMAGE_TAG:-latest}
+    container_name: ticketing-service
+    ports:
+      - "${TICKETING_SERVICE_HOST_PORT:-18086}:8086"
+    environment:
+      SERVER_PORT: 8086
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ticketing-db:5432/ticketing_db
+      SPRING_DATASOURCE_USERNAME: ticketing_user
+      SPRING_DATASOURCE_PASSWORD: ticketing_pass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
+      JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
+      EVENT_SERVICE_URL: http://event-service:8083
+    depends_on:
+      - ticketing-db
+      - rabbitmq
+      - event-service
+
+  checkin-service:
+    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-checkin-service:${TEAM_IMAGE_TAG:-latest}
+    container_name: checkin-service
+    ports:
+      - "${CHECKIN_SERVICE_HOST_PORT:-18087}:8087"
+    environment:
+      SERVER_PORT: 8087
+      SPRING_DATASOURCE_URL: jdbc:postgresql://checkin-db:5432/checkin_db
+      SPRING_DATASOURCE_USERNAME: checkin_user
+      SPRING_DATASOURCE_PASSWORD: checkin_pass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
+      JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
+      EVENT_SERVICE_URL: http://event-service:8083
+      TICKETING_SERVICE_URL: http://ticketing-service:8086
+    depends_on:
+      - checkin-db
+      - rabbitmq
+      - event-service
+      - ticketing-service
+
+  reporting-service:
+    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-reporting-service:${TEAM_IMAGE_TAG:-latest}
+    container_name: reporting-service
+    ports:
+      - "${REPORTING_SERVICE_HOST_PORT:-18089}:8089"
+    environment:
+      SERVER_PORT: 8089
+      SPRING_DATASOURCE_URL: jdbc:postgresql://reporting-db:5432/reporting_db
+      SPRING_DATASOURCE_USERNAME: reporting_user
+      SPRING_DATASOURCE_PASSWORD: reporting_pass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
+      JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
+    depends_on:
+      - reporting-db
+      - rabbitmq
+
+  event-db:
+    image: postgres:16
+    container_name: event-db
+    environment:
+      POSTGRES_DB: event_db
+      POSTGRES_USER: event_user
+      POSTGRES_PASSWORD: event_pass
+    ports:
+      - "${EVENT_DB_HOST_PORT:-5436}:5432"
+    volumes:
+      - event-db-data:/var/lib/postgresql/data
+
+  venue-db:
+    image: postgres:16
+    container_name: venue-db
+    environment:
+      POSTGRES_DB: venue_db
+      POSTGRES_USER: venue_user
+      POSTGRES_PASSWORD: venue_pass
+    ports:
+      - "${VENUE_DB_HOST_PORT:-5437}:5432"
+    volumes:
+      - venue-db-data:/var/lib/postgresql/data
+
+  user-db:
+    image: postgres:16
+    container_name: user-db
+    environment:
+      POSTGRES_DB: user_service_db
+      POSTGRES_USER: user_user
+      POSTGRES_PASSWORD: user_pass
+    ports:
+      - "${USER_DB_HOST_PORT:-5438}:5432"
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+
+  ticketing-db:
+    image: postgres:16
+    container_name: ticketing-db
+    environment:
+      POSTGRES_DB: ticketing_db
+      POSTGRES_USER: ticketing_user
+      POSTGRES_PASSWORD: ticketing_pass
+    ports:
+      - "${TICKETING_DB_HOST_PORT:-5439}:5432"
+    volumes:
+      - ticketing-db-data:/var/lib/postgresql/data
+
+  checkin-db:
+    image: postgres:16
+    container_name: checkin-db
+    environment:
+      POSTGRES_DB: checkin_db
+      POSTGRES_USER: checkin_user
+      POSTGRES_PASSWORD: checkin_pass
+    ports:
+      - "${CHECKIN_DB_HOST_PORT:-5440}:5432"
+    volumes:
+      - checkin-db-data:/var/lib/postgresql/data
+
+  reporting-db:
+    image: postgres:16
+    container_name: reporting-db
+    environment:
+      POSTGRES_DB: reporting_db
+      POSTGRES_USER: reporting_user
+      POSTGRES_PASSWORD: reporting_pass
+    ports:
+      - "${REPORTING_DB_HOST_PORT:-5441}:5432"
+    volumes:
+      - reporting-db-data:/var/lib/postgresql/data
+
+volumes:
+  event-db-data:
+  venue-db-data:
+  user-db-data:
+  ticketing-db-data:
+  checkin-db-data:
+  reporting-db-data:
