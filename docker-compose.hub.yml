@@ -2,17 +2,19 @@ services:
   api-gateway:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-api-gateway:${IMAGE_TAG:-latest}
     container_name: api-gateway
+    restart: unless-stopped
     ports:
-      - "${API_GATEWAY_HOST_PORT:-18080}:8080"
+      - "${API_GATEWAY_HOST_PORT:-8080}:8080"
     environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       BOOKING_SERVICE_URL: http://booking-service:8081
       PAYMENT_SERVICE_URL: http://payment-service:8082
       EVENT_SERVICE_URL: ${EVENT_SERVICE_URL:-http://event-service:8083}
       TICKETING_SERVICE_URL: ${TICKETING_SERVICE_URL:-http://booking-service:8081}
       VENUE_SERVICE_URL: ${VENUE_SERVICE_URL:-http://venue-service:8084}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:8090}
-      CHECKIN_SERVICE_URL: ${CHECKIN_SERVICE_URL:-http://checkin-service:8087}
-      REPORTING_SERVICE_URL: ${REPORTING_SERVICE_URL:-http://reporting-service:8089}
+      CHECKIN_SERVICE_URL: ${CHECKIN_SERVICE_URL:-http://checkin-service:8086}
+      REPORTING_SERVICE_URL: ${REPORTING_SERVICE_URL:-http://reporting-service:8087}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:8088}
       JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
       JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
@@ -33,9 +35,11 @@ services:
   booking-service:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-booking-service:${IMAGE_TAG:-latest}
     container_name: booking-service
-    ports:
-      - "${BOOKING_SERVICE_HOST_PORT:-18081}:8081"
+    restart: unless-stopped
+    expose:
+      - "8081"
     environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       SPRING_DATASOURCE_URL: jdbc:postgresql://booking-db:5432/booking_db
       SPRING_DATASOURCE_USERNAME: booking_user
       SPRING_DATASOURCE_PASSWORD: booking_pass
@@ -45,6 +49,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
       JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
       PAYMENT_SERVICE_URL: http://payment-service:8082
+      TICKETING_SERVICE_URL: http://ticketing-service:8091
     depends_on:
       - booking-db
       - rabbitmq
@@ -52,9 +57,11 @@ services:
   payment-service:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-payment-service:${IMAGE_TAG:-latest}
     container_name: payment-service
-    ports:
-      - "${PAYMENT_SERVICE_HOST_PORT:-18082}:8082"
+    restart: unless-stopped
+    expose:
+      - "8082"
     environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       SPRING_DATASOURCE_URL: jdbc:postgresql://payment-db:5432/payment_db
       SPRING_DATASOURCE_USERNAME: payment_user
       SPRING_DATASOURCE_PASSWORD: payment_pass
@@ -71,21 +78,31 @@ services:
       - rabbitmq
 
   event-service:
-    image: deb0tush/event-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${EVENT_SERVICE_IMAGE:-mohoshena/event-service}:${TEAM_IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: event-service
-    ports:
-      - "${EVENT_SERVICE_HOST_PORT:-18083}:8083"
+    restart: unless-stopped
+    expose:
+      - "8083"
     environment:
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL: jdbc:postgresql://event-db:5432/event_db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: event_user
+      SPRING_DATASOURCE_PASSWORD: event_pass
+    depends_on:
+      - event-db
 
   user-service:
-    image: deb0tush/user-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${USER_SERVICE_IMAGE:-deb0tush/user-service}:${TEAM_IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: user-service
-    ports:
-      - "${USER_SERVICE_HOST_PORT:-18085}:8090"
+    restart: unless-stopped
+    expose:
+      - "8090"
     environment:
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       SERVER_PORT: 8090
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_service_db
       SPRING_DATASOURCE_USERNAME: user_user
@@ -98,6 +115,7 @@ services:
   frontend:
     image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-frontend:${IMAGE_TAG:-latest}
     container_name: event-ticketing-frontend
+    restart: unless-stopped
     ports:
       - "${FRONTEND_HOST_PORT:-8088}:80"
     depends_on:
@@ -110,8 +128,8 @@ services:
       POSTGRES_DB: booking_db
       POSTGRES_USER: booking_user
       POSTGRES_PASSWORD: booking_pass
-    ports:
-      - "${BOOKING_DB_HOST_PORT:-5433}:5432"
+    expose:
+      - "5432"
     volumes:
       - booking-db-data:/var/lib/postgresql/data
 
@@ -122,8 +140,8 @@ services:
       POSTGRES_DB: auth_db
       POSTGRES_USER: auth_user
       POSTGRES_PASSWORD: auth_pass
-    ports:
-      - "${AUTH_DB_HOST_PORT:-5435}:5432"
+    expose:
+      - "5432"
     volumes:
       - auth-db-data:/var/lib/postgresql/data
 
@@ -134,10 +152,22 @@ services:
       POSTGRES_DB: user_service_db
       POSTGRES_USER: user_user
       POSTGRES_PASSWORD: user_pass
-    ports:
-      - "${USER_DB_HOST_PORT:-5438}:5432"
+    expose:
+      - "5432"
     volumes:
       - user-db-data:/var/lib/postgresql/data
+
+  event-db:
+    image: postgres:16
+    container_name: event-db
+    environment:
+      POSTGRES_DB: event_db
+      POSTGRES_USER: event_user
+      POSTGRES_PASSWORD: event_pass
+    expose:
+      - "5432"
+    volumes:
+      - event-db-data:/var/lib/postgresql/data
 
   payment-db:
     image: postgres:16
@@ -146,8 +176,8 @@ services:
       POSTGRES_DB: payment_db
       POSTGRES_USER: payment_user
       POSTGRES_PASSWORD: payment_pass
-    ports:
-      - "${PAYMENT_DB_HOST_PORT:-5434}:5432"
+    expose:
+      - "5432"
     volumes:
       - payment-db-data:/var/lib/postgresql/data
 
@@ -161,5 +191,6 @@ services:
 volumes:
   auth-db-data:
   booking-db-data:
+  event-db-data:
   payment-db-data:
   user-db-data:

@@ -13,6 +13,7 @@ Common Docker Compose runtime for Assignment 3.
 | `scripts/build-images.sh` | Build common images with Docker Hub tags |
 | `scripts/push-images.sh` | Push common images |
 | `scripts/pull-images.sh` | Pull common images |
+| `scripts/seed-real-demo.mjs` | Seed demo venues, events, and Ticketing inventory through service APIs |
 
 ## Local Source Run
 
@@ -23,7 +24,7 @@ docker compose up --build
 This builds this repo's API Gateway, Booking, Payment, and Frontend images. It also pulls the teammate images currently available:
 
 - `deb0tush/user-service:latest`
-- `deb0tush/event-service:latest`
+- `mohoshena/event-service:latest`
 
 Open:
 
@@ -51,17 +52,26 @@ docker compose -f docker-compose.hub.yml -f docker-compose.team.yml up
 
 The base Compose file already runs:
 
-- `event-service` on `18083`
-- `user-service` on `18085`
+- `api-gateway` on `8080`
+- `event-service` on `8083`
+- `user-service` on `8090`
 
 The team overlay adds the remaining placeholders:
 
-- `venue-service` on `18084`
-- `ticketing-service` on `18086`
-- `checkin-service` on `18087`
-- `reporting-service` on `18089`
+- `venue-service` on `8084` using `mohoshena/venue-service:latest`
+- `ticketing-service` on `8091` using `deb0tush/ticketing-service:latest`
+- `checkin-service` on `8086` using `muhammadafaq1/attendee-checkin-service:latest`
+- `reporting-service` on `8087` using `muhammadafaq1/analytics-service:latest`
 
-It also changes gateway routing so `/api/events/**` goes to Event, `/api/ticket-types/**` and `/api/events/{eventId}/tickettypes` go to Ticketing, `/api/venues/**` goes to Venue, `/api/users/**` goes to User, `/api/checkins/**` goes to Check-in, and `/api/reports/**` goes to Reporting.
+It also changes gateway routing so `/api/events/**` goes to Event, numeric `/api/events/{eventId}/tickettypes` and `/api/events/{eventId}/ticket-types` go to Ticketing through the gateway's Event ID bridge, `/api/ticket-types/**` and `/api/tickets/**` go to Ticketing, `/api/venues/**` goes to Venue, `/api/users/**` goes to User, `/api/checkins/**` goes to Check-in, and `/api/reports/**` goes to Reporting.
+
+Seed real class-demo data after the stack is started:
+
+```bash
+node scripts/seed-real-demo.mjs
+```
+
+The seeder creates Venue Service venues, Event Service events, publishes those events, and creates Ticketing Service ticket types. The frontend then reads events from Event Service and tickets from Ticketing Service rather than the old Booking catalog.
 
 ## Docker Hub Publishing
 
@@ -80,15 +90,15 @@ The common image names are:
 
 Current teammate image names:
 
-- `deb0tush/event-service:latest`
+- `mohoshena/event-service:latest`
 - `deb0tush/user-service:latest`
+- `deb0tush/ticketing-service:latest`
 
 Expected remaining teammate image names:
 
-- `parvesshikder/event-ticketing-venue-service:latest`
-- `parvesshikder/event-ticketing-ticketing-service:latest`
-- `parvesshikder/event-ticketing-checkin-service:latest`
-- `parvesshikder/event-ticketing-reporting-service:latest`
+- `mohoshena/venue-service:latest`
+- `muhammadafaq1/attendee-checkin-service:latest`
+- `muhammadafaq1/analytics-service:latest`
 
 ## Stop
 

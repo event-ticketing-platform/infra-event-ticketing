@@ -1,12 +1,13 @@
 services:
   api-gateway:
     environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       EVENT_SERVICE_URL: http://event-service:8083
       VENUE_SERVICE_URL: http://venue-service:8084
       USER_SERVICE_URL: http://user-service:8090
-      TICKETING_SERVICE_URL: http://ticketing-service:8086
-      CHECKIN_SERVICE_URL: http://checkin-service:8087
-      REPORTING_SERVICE_URL: http://reporting-service:8089
+      TICKETING_SERVICE_URL: http://ticketing-service:8091
+      CHECKIN_SERVICE_URL: http://checkin-service:8086
+      REPORTING_SERVICE_URL: http://reporting-service:8087
     depends_on:
       - auth-db
       - booking-service
@@ -18,23 +19,40 @@ services:
       - checkin-service
       - reporting-service
 
+  booking-service:
+    environment:
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
+      SPRING_RABBITMQ_DYNAMIC: "false"
+
   event-service:
-    image: deb0tush/event-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${EVENT_SERVICE_IMAGE:-mohoshena/event-service}:${TEAM_IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: event-service
-    ports:
-      - "${EVENT_SERVICE_HOST_PORT:-18083}:8083"
+    restart: unless-stopped
+    expose:
+      - "8083"
     environment:
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL: jdbc:postgresql://event-db:5432/event_db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: event_user
+      SPRING_DATASOURCE_PASSWORD: event_pass
+    depends_on:
+      - event-db
 
   venue-service:
-    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-venue-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${VENUE_SERVICE_IMAGE:-mohoshena/venue-service}:${TEAM_IMAGE_TAG:-latest}
+    platform: linux/amd64
     container_name: venue-service
-    ports:
-      - "${VENUE_SERVICE_HOST_PORT:-18084}:8084"
+    restart: unless-stopped
+    expose:
+      - "8084"
     environment:
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       SERVER_PORT: 8084
       SPRING_DATASOURCE_URL: jdbc:postgresql://venue-db:5432/venue_db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       SPRING_DATASOURCE_USERNAME: venue_user
       SPRING_DATASOURCE_PASSWORD: venue_pass
       JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
@@ -43,12 +61,14 @@ services:
       - venue-db
 
   user-service:
-    image: deb0tush/user-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${USER_SERVICE_IMAGE:-deb0tush/user-service}:${TEAM_IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: user-service
-    ports:
-      - "${USER_SERVICE_HOST_PORT:-18085}:8090"
+    restart: unless-stopped
+    expose:
+      - "8090"
     environment:
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
       SERVER_PORT: 8090
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_service_db
       SPRING_DATASOURCE_USERNAME: user_user
@@ -58,13 +78,40 @@ services:
     depends_on:
       - user-db
 
+  rabbitmq-setup:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq-setup
+    depends_on:
+      - rabbitmq
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -e
+        until rabbitmqadmin --host=rabbitmq --username=guest --password=guest list queues name >/dev/null 2>&1; do sleep 2; done;
+        booking_exchange_type="$$(rabbitmqadmin --host=rabbitmq --username=guest --password=guest --format=tsv list exchanges name type | awk '$$1 == "booking-events" {print $$2}')";
+        if [ "$$booking_exchange_type" != "topic" ]; then rabbitmqadmin --host=rabbitmq --username=guest --password=guest delete exchange name=booking-events || true; fi;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare exchange name=payment-events type=direct durable=true;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare exchange name=booking-events type=topic durable=true;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare queue name=booking.payment-completed durable=true;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare queue name=booking-confirmed-queue durable=true;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare queue name=booking-cancelled-queue durable=true;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare binding source=payment-events destination_type=queue destination=booking.payment-completed routing_key=PaymentCompleted;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare binding source=booking-events destination_type=queue destination=booking-confirmed-queue routing_key=booking.confirmed;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare binding source=booking-events destination_type=queue destination=booking-confirmed-queue routing_key=BookingConfirmed;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare binding source=booking-events destination_type=queue destination=booking-cancelled-queue routing_key=booking.cancelled;
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare binding source=booking-events destination_type=queue destination=booking-cancelled-queue routing_key=BookingCancelled;
+
   ticketing-service:
-    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-ticketing-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${TICKETING_SERVICE_IMAGE:-deb0tush/ticketing-service}:${TEAM_IMAGE_TAG:-latest}
+    platform: linux/amd64
     container_name: ticketing-service
-    ports:
-      - "${TICKETING_SERVICE_HOST_PORT:-18086}:8086"
+    restart: unless-stopped
+    expose:
+      - "8091"
     environment:
-      SERVER_PORT: 8086
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
+      SERVER_PORT: 8091
       SPRING_DATASOURCE_URL: jdbc:postgresql://ticketing-db:5432/ticketing_db
       SPRING_DATASOURCE_USERNAME: ticketing_user
       SPRING_DATASOURCE_PASSWORD: ticketing_pass
@@ -73,53 +120,73 @@ services:
       SPRING_RABBITMQ_PASSWORD: guest
       JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
       JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
-      EVENT_SERVICE_URL: http://event-service:8083
+      EVENT_SERVICE_URL: http://api-gateway:8080/ticketing-event-adapter
+      EVENT_SERVICE_BASE_URL: http://api-gateway:8080/ticketing-event-adapter
+      BOOKING_SERVICE_BASE_URL: http://booking-service:8081
     depends_on:
-      - ticketing-db
-      - rabbitmq
-      - event-service
+      ticketing-db:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      rabbitmq-setup:
+        condition: service_completed_successfully
+      event-service:
+        condition: service_started
 
   checkin-service:
-    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-checkin-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${CHECKIN_SERVICE_IMAGE:-muhammadafaq1/attendee-checkin-service}:${TEAM_IMAGE_TAG:-latest}
+    platform: linux/amd64
     container_name: checkin-service
-    ports:
-      - "${CHECKIN_SERVICE_HOST_PORT:-18087}:8087"
+    restart: unless-stopped
+    expose:
+      - "8086"
     environment:
-      SERVER_PORT: 8087
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
+      SERVER_PORT: 8086
       SPRING_DATASOURCE_URL: jdbc:postgresql://checkin-db:5432/checkin_db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       SPRING_DATASOURCE_USERNAME: checkin_user
       SPRING_DATASOURCE_PASSWORD: checkin_pass
+      SPRING_H2_CONSOLE_ENABLED: false
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: guest
       SPRING_RABBITMQ_PASSWORD: guest
       JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
       JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
       EVENT_SERVICE_URL: http://event-service:8083
-      TICKETING_SERVICE_URL: http://ticketing-service:8086
+      TICKETING_SERVICE_URL: http://ticketing-service:8091
     depends_on:
       - checkin-db
       - rabbitmq
       - event-service
-      - ticketing-service
 
   reporting-service:
-    image: ${DOCKERHUB_NAMESPACE:-parvesshikder}/event-ticketing-reporting-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${ANALYTICS_SERVICE_IMAGE:-muhammadafaq1/analytics-service}:${TEAM_IMAGE_TAG:-latest}
+    platform: linux/amd64
     container_name: reporting-service
-    ports:
-      - "${REPORTING_SERVICE_HOST_PORT:-18089}:8089"
+    restart: unless-stopped
+    expose:
+      - "8087"
     environment:
-      SERVER_PORT: 8089
+      JAVA_TOOL_OPTIONS: ${TEAM_JAVA_TOOL_OPTIONS:--Xms32m -Xmx160m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -Xss256k -XX:+UseSerialGC}
+      SERVER_PORT: 8087
       SPRING_DATASOURCE_URL: jdbc:postgresql://reporting-db:5432/reporting_db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
       SPRING_DATASOURCE_USERNAME: reporting_user
       SPRING_DATASOURCE_PASSWORD: reporting_pass
+      SPRING_H2_CONSOLE_ENABLED: false
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: guest
       SPRING_RABBITMQ_PASSWORD: guest
       JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
       JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
+      SERVICES_CHECKIN_URL: http://checkin-service:8086
     depends_on:
       - reporting-db
       - rabbitmq
+      - checkin-service
 
   event-db:
     image: postgres:16
@@ -128,8 +195,8 @@ services:
       POSTGRES_DB: event_db
       POSTGRES_USER: event_user
       POSTGRES_PASSWORD: event_pass
-    ports:
-      - "${EVENT_DB_HOST_PORT:-5436}:5432"
+    expose:
+      - "5432"
     volumes:
       - event-db-data:/var/lib/postgresql/data
 
@@ -140,8 +207,8 @@ services:
       POSTGRES_DB: venue_db
       POSTGRES_USER: venue_user
       POSTGRES_PASSWORD: venue_pass
-    ports:
-      - "${VENUE_DB_HOST_PORT:-5437}:5432"
+    expose:
+      - "5432"
     volumes:
       - venue-db-data:/var/lib/postgresql/data
 
@@ -152,8 +219,8 @@ services:
       POSTGRES_DB: user_service_db
       POSTGRES_USER: user_user
       POSTGRES_PASSWORD: user_pass
-    ports:
-      - "${USER_DB_HOST_PORT:-5438}:5432"
+    expose:
+      - "5432"
     volumes:
       - user-db-data:/var/lib/postgresql/data
 
@@ -164,8 +231,8 @@ services:
       POSTGRES_DB: ticketing_db
       POSTGRES_USER: ticketing_user
       POSTGRES_PASSWORD: ticketing_pass
-    ports:
-      - "${TICKETING_DB_HOST_PORT:-5439}:5432"
+    expose:
+      - "5432"
     volumes:
       - ticketing-db-data:/var/lib/postgresql/data
 
@@ -176,8 +243,8 @@ services:
       POSTGRES_DB: checkin_db
       POSTGRES_USER: checkin_user
       POSTGRES_PASSWORD: checkin_pass
-    ports:
-      - "${CHECKIN_DB_HOST_PORT:-5440}:5432"
+    expose:
+      - "5432"
     volumes:
       - checkin-db-data:/var/lib/postgresql/data
 
@@ -188,8 +255,8 @@ services:
       POSTGRES_DB: reporting_db
       POSTGRES_USER: reporting_user
       POSTGRES_PASSWORD: reporting_pass
-    ports:
-      - "${REPORTING_DB_HOST_PORT:-5441}:5432"
+    expose:
+      - "5432"
     volumes:
       - reporting-db-data:/var/lib/postgresql/data
 

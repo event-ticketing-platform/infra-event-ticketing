@@ -5,7 +5,7 @@ services:
       context: ../api-gateway
     container_name: api-gateway
     ports:
-      - "${API_GATEWAY_HOST_PORT:-18080}:8080"
+      - "${API_GATEWAY_HOST_PORT:-8080}:8080"
     environment:
       BOOKING_SERVICE_URL: http://booking-service:8081
       PAYMENT_SERVICE_URL: http://payment-service:8082
@@ -13,8 +13,8 @@ services:
       TICKETING_SERVICE_URL: ${TICKETING_SERVICE_URL:-http://booking-service:8081}
       VENUE_SERVICE_URL: ${VENUE_SERVICE_URL:-http://venue-service:8084}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:8090}
-      CHECKIN_SERVICE_URL: ${CHECKIN_SERVICE_URL:-http://checkin-service:8087}
-      REPORTING_SERVICE_URL: ${REPORTING_SERVICE_URL:-http://reporting-service:8089}
+      CHECKIN_SERVICE_URL: ${CHECKIN_SERVICE_URL:-http://checkin-service:8086}
+      REPORTING_SERVICE_URL: ${REPORTING_SERVICE_URL:-http://reporting-service:8087}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:8088}
       JWT_ISSUER: ${JWT_ISSUER:-event-ticketing-gateway}
       JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
@@ -77,20 +77,26 @@ services:
       - rabbitmq
 
   event-service:
-    image: deb0tush/event-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${EVENT_SERVICE_IMAGE:-mohoshena/event-service}:${TEAM_IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: event-service
     ports:
-      - "${EVENT_SERVICE_HOST_PORT:-18083}:8083"
+      - "${EVENT_SERVICE_HOST_PORT:-8083}:8083"
     environment:
       SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL: jdbc:postgresql://event-db:5432/event_db
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: event_user
+      SPRING_DATASOURCE_PASSWORD: event_pass
+    depends_on:
+      - event-db
 
   user-service:
-    image: deb0tush/user-service:${TEAM_IMAGE_TAG:-latest}
+    image: ${USER_SERVICE_IMAGE:-deb0tush/user-service}:${TEAM_IMAGE_TAG:-latest}
     platform: linux/amd64
     container_name: user-service
     ports:
-      - "${USER_SERVICE_HOST_PORT:-18085}:8090"
+      - "${USER_SERVICE_HOST_PORT:-8090}:8090"
     environment:
       SERVER_PORT: 8090
       SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_service_db
@@ -147,6 +153,18 @@ services:
     volumes:
       - user-db-data:/var/lib/postgresql/data
 
+  event-db:
+    image: postgres:16
+    container_name: event-db
+    environment:
+      POSTGRES_DB: event_db
+      POSTGRES_USER: event_user
+      POSTGRES_PASSWORD: event_pass
+    ports:
+      - "${EVENT_DB_HOST_PORT:-5436}:5432"
+    volumes:
+      - event-db-data:/var/lib/postgresql/data
+
   payment-db:
     image: postgres:16
     container_name: payment-db
@@ -169,5 +187,6 @@ services:
 volumes:
   auth-db-data:
   booking-db-data:
+  event-db-data:
   payment-db-data:
   user-db-data:
