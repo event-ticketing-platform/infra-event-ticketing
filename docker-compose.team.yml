@@ -82,7 +82,8 @@ services:
     image: rabbitmq:3.13-management
     container_name: rabbitmq-setup
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     entrypoint:
       - /bin/sh
       - -lc
@@ -127,7 +128,7 @@ services:
       ticketing-db:
         condition: service_started
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       rabbitmq-setup:
         condition: service_completed_successfully
       event-service:
@@ -157,9 +158,12 @@ services:
       EVENT_SERVICE_URL: http://event-service:8083
       TICKETING_SERVICE_URL: http://ticketing-service:8091
     depends_on:
-      - checkin-db
-      - rabbitmq
-      - event-service
+      checkin-db:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      event-service:
+        condition: service_started
 
   reporting-service:
     image: ${ANALYTICS_SERVICE_IMAGE:-muhammadafaq1/analytics-service}:${TEAM_IMAGE_TAG:-latest}
@@ -184,9 +188,12 @@ services:
       JWT_SECRET: ${JWT_SECRET:-event-ticketing-development-secret-32}
       SERVICES_CHECKIN_URL: http://checkin-service:8086
     depends_on:
-      - reporting-db
-      - rabbitmq
-      - checkin-service
+      reporting-db:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      checkin-service:
+        condition: service_started
 
   event-db:
     image: postgres:16

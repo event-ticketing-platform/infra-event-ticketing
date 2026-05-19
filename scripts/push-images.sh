@@ -1,18 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NAMESPACE="${DOCKERHUB_NAMESPACE:-parvesshikder}"
-TAG="${IMAGE_TAG:-latest}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-images=(
-  event-ticketing-api-gateway
-  event-ticketing-booking-service
-  event-ticketing-payment-service
-  event-ticketing-frontend
-)
-
-for image in "${images[@]}"; do
-  docker push "${NAMESPACE}/${image}:${TAG}"
-done
-
-echo "Pushed common images to Docker Hub namespace ${NAMESPACE} with tag ${TAG}"
+PUSH=1 "${SCRIPT_DIR}/build-images.sh"
